@@ -1,6 +1,7 @@
 //Author: Colby Gramelspacher, Ryan Noriega, Karam Alkherej
 
 #include <LiquidCrystal.h>
+#include <dht.h>
 
 //SBn means Set Bit n
 //MBn means Mask Bit n
@@ -63,6 +64,7 @@ volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
 const int RS = 11, EN = 12, D4 = 2, D5 = 3, D6 = 4, D7 = 5;
 LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
+dht dht1;
 
 unsigned long previousMill;
 const long max_interval = 1000;
@@ -83,6 +85,10 @@ void setup()
   lcd.begin(16, 2); // set up number of columns and rows
   LED_init();
 
+  //use pin 19 for interrupt
+  *ddr_d &= MB2;
+  attachInterrupt(digitalPinToInterrupt(19), Toggle_Enable, RISING);
+
   currentLED = YELLOW;
   previousMill = 0;
 }
@@ -90,9 +96,20 @@ void setup()
 void loop()
 {
   BlinkTimer(millis(), currentLED);
+  LCDPrint();
+  if(WaterCheck()) Serial.println("water hit");
+  if(TempCheck()) Serial.println("temp hit")
 }
 
+///////////////////////////////////////////ISR///////////////////////////////////////////////
+#pragma region 
+void Toggle_Enable()
+{
+  Serial.println("toggle");
+}
+#pragma endregion
 ////////////////////////////////UART FUNCTIONS/////////////////////////////////
+#pragma region 
 void U0init(unsigned long U0baud)
 {
  unsigned long FCPU = 16000000;
@@ -142,8 +159,9 @@ void U0print(unsigned int data){
   } else if (flag) U0putchar(0+'0');
   U0putchar((out + '0'));
 }
-
+#pragma endregion
 ///////////////////////////////////////////////////ADC FUNCTIONS///////////////////////////////////////////////
+#pragma region 
 void adc_init()
 {
   // setup the A register
@@ -183,8 +201,9 @@ unsigned int adc_read(unsigned char adc_channel_num)
   // return the result in the ADC data register
   return *my_ADC_DATA;
 }
-
+#pragma endregion
 /////////////////////////////////HELPER FUNCTIONS//////////////////////////////////////////////
+#pragma region 
 //Initilize LED pins
 void LED_init(){
   *ddr_h |= SB3;
@@ -241,3 +260,23 @@ void BlinkTimer(const long currentMill, LED currentLED){
     }
   }
 }
+void LCDPrint(){
+  int chk = dht1.read11(10);
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(dht1.temperature);
+  lcd.setCursor(0, 1);
+  lcd.print("Humidity: ");
+  lcd.print(dht1.humidity);
+}
+int WaterCheck(){
+  unsigned int water_sensor = adc_read(0);
+  if(water_sensor <= 100) return 1;
+  else return 0;
+}
+int TempCheck(){
+  int chk = dht1.read11(10);
+  if (dht1.temperature > 32) return 1;
+  else return 0;
+}
+#pragma endregion
