@@ -1,6 +1,8 @@
 //Author: Colby Gramelspacher, Ryan Noriega, Karam Alkherej
 
 #include <LiquidCrystal.h>
+#include <Stepper.h>
+#include <RTClib.h>
 
 //SBn means Set Bit n
 //MBn means Mask Bit n
@@ -64,6 +66,8 @@ volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 const int RS = 11, EN = 12, D4 = 2, D5 = 3, D6 = 4, D7 = 5;
 LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
 
+RTC_DS3231 rtc;
+
 unsigned long previousMill;
 const long max_interval = 1000;
 
@@ -76,12 +80,22 @@ enum LED{
 
 volatile LED currentLED;
 
+const int stepsPerRev = 2038;
+Stepper myStepper = Stepper(stepsPerRev, 30, 32, 31, 33);
+
 void setup()
 {
   U0init(9600);
   adc_init();
   lcd.begin(16, 2); // set up number of columns and rows
   LED_init();
+  rtc.begin();
+
+  *ddr_c &= MB3; //pin 34
+  *ddr_c &= MB2; //pin 35
+  *ddr_c |= SB1; //pin 36
+  *ddr_c |= SB0; //pin 37
+  *ddr_d |= SB7; //pin 38
 
   currentLED = YELLOW;
   previousMill = 0;
@@ -89,7 +103,11 @@ void setup()
 
 void loop()
 {
-  BlinkTimer(millis(), currentLED);
+  //BlinkTimer(millis(), currentLED);
+  StartFan();
+  RTCRecord();
+  TurnFanNegative();
+  TurnFanPositive();
 }
 
 ////////////////////////////////UART FUNCTIONS/////////////////////////////////
@@ -240,4 +258,40 @@ void BlinkTimer(const long currentMill, LED currentLED){
         break;
     }
   }
+}
+void TurnFanNegative(){
+  if(*pin_c & SB3) myStepper.step(stepsPerRev);
+}
+void TurnFanPositive(){
+  if(*pin_c & SB2) myStepper.step(-stepsPerRev);
+}
+void StartFan(){
+  *port_c |= SB1;
+  *port_c |= SB0;
+  *port_d &= MB7;
+}
+void StopFan(){
+  *port_c &= MB1;
+  *port_c &= MB0;
+  *port_d &= MB7;
+}
+void RTCRecord(){
+  DateTime now = rtc.now();
+  U0print(now.year());
+  U0putchar('/');
+  U0print(now.month());
+  U0putchar('/');
+  U0print(now.day());
+  U0putchar(' ');
+  U0putchar('T');
+  U0putchar('i');
+  U0putchar('m');
+  U0putchar('e');
+  U0putchar('-');
+  U0print(now.hour());
+  U0putchar(':');
+  U0print(now.minute());
+  U0putchar(':');
+  U0print(now.second());
+  U0putchar('\n');
 }
